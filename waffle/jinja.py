@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 import jinja2
 from jinja2.ext import Extension
 
-from waffle import flag_is_active, sample_is_active, switch_is_active
+from waffle.interface import flag_is_active, sample_is_active, switch_is_active
 from waffle.views import _generate_waffle_js
 
 
