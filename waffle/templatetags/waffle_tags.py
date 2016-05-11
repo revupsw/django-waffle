@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 from django import template
 from django.template.base import VariableDoesNotExist
 
-from waffle import flag_is_active, sample_is_active, switch_is_active
+from waffle.interface import flag_is_active, sample_is_active, switch_is_active
 from waffle.views import _generate_waffle_js
 
 

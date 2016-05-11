@@ -9,7 +9,7 @@ from django.test.utils import override_settings
 
 import mock
 
-import waffle
+from waffle.interface import flag_is_active, sample_is_active, switch_is_active
 from test_app import views
 from waffle.middleware import WaffleMiddleware
 from waffle.models import Flag, Sample, Switch
@@ -215,53 +215,53 @@ class WaffleTests(TestCase):
         request = get()  # Create a clean request.
         assert not hasattr(request, 'waffles')
         uniform.return_value = '10'  # < 50. Flag is True.
-        assert waffle.flag_is_active(request, 'myflag')
+        assert flag_is_active(request, 'myflag')
         assert hasattr(request, 'waffles')  # We should record this flag.
         assert 'myflag' in request.waffles
         assert request.waffles['myflag'][0]
         uniform.return_value = '70'  # > 50. Normally, Flag would be False.
-        assert waffle.flag_is_active(request, 'myflag')
+        assert flag_is_active(request, 'myflag')
         assert request.waffles['myflag'][0]
 
     def test_undefined(self):
         """Undefined flags are always false."""
         request = get()
-        assert not waffle.flag_is_active(request, 'foo')
+        assert not flag_is_active(request, 'foo')
 
     @override_settings(WAFFLE_FLAG_DEFAULT=True)
     def test_undefined_default(self):
         """WAFFLE_FLAG_DEFAULT controls undefined flags."""
         request = get()
-        assert waffle.flag_is_active(request, 'foo')
+        assert flag_is_active(request, 'foo')
 
     @override_settings(WAFFLE_OVERRIDE=True)
     def test_override(self):
         request = get(foo='1')
         Flag.objects.create(name='foo')  # Off for everyone.
-        assert waffle.flag_is_active(request, 'foo')
+        assert flag_is_active(request, 'foo')
 
     def test_testing_flag(self):
         Flag.objects.create(name='foo', testing=True)
         request = get(dwft_foo='1')
-        assert waffle.flag_is_active(request, 'foo')
+        assert flag_is_active(request, 'foo')
         assert 'foo' in request.waffle_tests
         assert request.waffle_tests['foo']
 
         # GET param should override cookie
         request = get(dwft_foo='0')
         request.COOKIES['dwft_foo'] = 'True'
-        assert not waffle.flag_is_active(request, 'foo')
+        assert not flag_is_active(request, 'foo')
         assert 'foo' in request.waffle_tests
         assert not request.waffle_tests['foo']
 
     def test_testing_disabled_flag(self):
         Flag.objects.create(name='foo')
         request = get(dwft_foo='1')
-        assert not waffle.flag_is_active(request, 'foo')
+        assert not flag_is_active(request, 'foo')
         assert not hasattr(request, 'waffle_tests')
 
         request = get(dwft_foo='0')
-        assert not waffle.flag_is_active(request, 'foo')
+        assert not flag_is_active(request, 'foo')
         assert not hasattr(request, 'waffle_tests')
 
     def test_set_then_unset_testing_flag(self):
@@ -285,61 +285,61 @@ class WaffleTests(TestCase):
 class SwitchTests(TestCase):
     def test_switch_active(self):
         switch = Switch.objects.create(name='myswitch', active=True)
-        assert waffle.switch_is_active(switch.name)
+        assert switch_is_active(switch.name)
 
     def test_switch_inactive(self):
         switch = Switch.objects.create(name='myswitch', active=False)
-        assert not waffle.switch_is_active(switch.name)
+        assert not switch_is_active(switch.name)
 
     def test_switch_active_from_cache(self):
         """Do not make two queries for an existing active switch."""
         switch = Switch.objects.create(name='myswitch', active=True)
         # Get the value once so that it will be put into the cache
-        assert waffle.switch_is_active(switch.name)
+        assert switch_is_active(switch.name)
         queries = len(connection.queries)
-        assert waffle.switch_is_active(switch.name)
+        assert switch_is_active(switch.name)
         self.assertEqual(queries, len(connection.queries), 'We should only make one query.')
 
     def test_switch_inactive_from_cache(self):
         """Do not make two queries for an existing inactive switch."""
         switch = Switch.objects.create(name='myswitch', active=False)
         # Get the value once so that it will be put into the cache
-        assert not waffle.switch_is_active(switch.name)
+        assert not switch_is_active(switch.name)
         queries = len(connection.queries)
-        assert not waffle.switch_is_active(switch.name)
+        assert not switch_is_active(switch.name)
         self.assertEqual(queries, len(connection.queries), 'We should only make one query.')
 
     def test_undefined(self):
-        assert not waffle.switch_is_active('foo')
+        assert not switch_is_active('foo')
 
     @override_settings(WAFFLE_SWITCH_DEFAULT=True)
     def test_undefined_default(self):
-        assert waffle.switch_is_active('foo')
+        assert switch_is_active('foo')
 
     @override_settings(DEBUG=True)
     def test_no_query(self):
         """Do not make two queries for a non-existent switch."""
         assert not Switch.objects.filter(name='foo').exists()
         queries = len(connection.queries)
-        assert not waffle.switch_is_active('foo')
+        assert not switch_is_active('foo')
         assert len(connection.queries) > queries, 'We should make one query.'
         queries = len(connection.queries)
-        assert not waffle.switch_is_active('foo')
+        assert not switch_is_active('foo')
         self.assertEqual(queries, len(connection.queries), 'We should only make one query.')
 
 
 class SampleTests(TestCase):
     def test_sample_100(self):
         sample = Sample.objects.create(name='sample', percent='100.0')
-        assert waffle.sample_is_active(sample.name)
+        assert sample_is_active(sample.name)
 
     def test_sample_0(self):
         sample = Sample.objects.create(name='sample', percent='0.0')
-        assert not waffle.sample_is_active(sample.name)
+        assert not sample_is_active(sample.name)
 
     def test_undefined(self):
-        assert not waffle.sample_is_active('foo')
+        assert not sample_is_active('foo')
 
     @override_settings(WAFFLE_SAMPLE_DEFAULT=True)
     def test_undefined_default(self):
-        assert waffle.sample_is_active('foo')
+        assert sample_is_active('foo')
