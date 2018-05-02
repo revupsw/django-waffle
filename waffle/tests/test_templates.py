@@ -35,8 +35,15 @@ class WaffleTemplateTests(TestCase):
         self.assertContains(response, 'window.waffle =')
 
     def test_get_nodes_by_type(self):
-        """WaffleNode.get_nodes_by_type() should correctly find all child nodes"""
-        test_template = Template('{% load waffle_tags %}{% switch "x" %}{{ a }}{% else %}{{ b }}{% endswitch %}')
+        """WaffleNode.get_nodes_by_type() should find all child nodes."""
+        test_template = Template(
+            '{% load waffle_tags %}'
+            '{% switch "x" %}'
+            '{{ a }}'
+            '{% else %}'
+            '{{ b }}'
+            '{% endswitch %}'
+        )
         children = test_template.nodelist.get_nodes_by_type(VariableNode)
         self.assertEqual(len(children), 2)
 
@@ -49,7 +56,7 @@ class WaffleTemplateTests(TestCase):
 
     def test_jinja_tags(self):
         request = get()
-        response = process_request(request, views.flag_in_jingo)
+        response = process_request(request, views.flag_in_jinja)
         self.assertContains(response, 'flag off')
         self.assertContains(response, 'switch off')
         self.assertContains(response, 'sample')

@@ -1,13 +1,12 @@
-
 from __future__ import unicode_literals
 
 from decimal import Decimal
 import random
 
-from waffle.compat import cache
-from waffle.models import cache_flag, Flag
-from waffle.utils import get_setting, keyfmt
+from waffle.models import Flag
+from waffle.utils import get_cache, get_setting, keyfmt
 
+cache = get_cache()
 
 class DoesNotExist(object):
     """The record does not exist."""
@@ -28,7 +27,6 @@ def _get_flag(flag_name):
     if flag is None:
         try:
             flag = Flag.objects.get(name=flag_name)
-            cache_flag(instance=flag)
         except Flag.DoesNotExist:
             flag = None
     return flag
@@ -46,7 +44,6 @@ def _flag_is_active_for_user(flag, user=None, **kwargs):
 
     if flag_users is None:
         flag_users = flag.users.all()
-        cache_flag(instance=flag)
     if user in flag_users:
         return True
 
@@ -54,7 +51,6 @@ def _flag_is_active_for_user(flag, user=None, **kwargs):
                                    flag.name))
     if flag_groups is None:
         flag_groups = flag.groups.all()
-        cache_flag(instance=flag)
     user_groups = user.groups.all()
     for group in flag_groups:
         if group in user_groups:
@@ -145,30 +141,25 @@ def flag_is_active(request, flag_name):
 
 
 def switch_is_active(switch_name):
-    from .models import cache_switch, Switch
-    from .compat import cache
+    from .models import Switch
 
     switch = cache.get(keyfmt(get_setting('SWITCH_CACHE_KEY'), switch_name))
     if switch is None:
         try:
             switch = Switch.objects.get(name=switch_name)
-            cache_switch(instance=switch)
         except Switch.DoesNotExist:
             switch = DoesNotExist()
             switch.name = switch_name
-            cache_switch(instance=switch)
     return switch.active
 
 
 def sample_is_active(sample_name):
-    from .models import cache_sample, Sample
-    from .compat import cache
+    from .models import Sample
 
     sample = cache.get(keyfmt(get_setting('SAMPLE_CACHE_KEY'), sample_name))
     if sample is None:
         try:
             sample = Sample.objects.get(name=sample_name)
-            cache_sample(instance=sample)
         except Sample.DoesNotExist:
             return get_setting('SAMPLE_DEFAULT')
 

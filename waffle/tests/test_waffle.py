@@ -14,6 +14,7 @@ from test_app import views
 from waffle.middleware import WaffleMiddleware
 from waffle.models import Flag, Sample, Switch
 from waffle.tests.base import TestCase
+from waffle.utils import is_authenticated
 
 
 def get(**kw):
@@ -161,7 +162,7 @@ class WaffleTests(TestCase):
         assert 'dwf_myflag' not in response.cookies
 
         request.user = User(username='foo')
-        assert request.user.is_authenticated()
+        assert is_authenticated(request.user)
         response = process_request(request, views.flag_in_view)
         self.assertEqual(b'on', response.content)
         assert 'dwf_myflag' not in response.cookies
@@ -177,7 +178,7 @@ class WaffleTests(TestCase):
         assert 'dwf_myflag' not in response.cookies
 
         request.user = User(username='foo')
-        assert request.user.is_authenticated()
+        assert is_authenticated(request.user)
         response = process_request(request, views.flag_in_view)
         self.assertEqual(b'on', response.content)
         assert 'dwf_myflag' not in response.cookies
@@ -194,7 +195,7 @@ class WaffleTests(TestCase):
         assert 'dwf_myflag' not in response.cookies
 
         request.user = User(username='foo')
-        assert request.user.is_authenticated()
+        assert is_authenticated(request.user)
         response = process_request(request, views.flag_in_view)
         self.assertEqual(b'off', response.content)
         assert 'dwf_myflag' not in response.cookies
@@ -281,6 +282,25 @@ class WaffleTests(TestCase):
         response = self.client.get('/flag_in_view?dwft_myflag=1')
         self.assertEqual(b'on', response.content)
 
+    @override_settings(DATABASE_ROUTERS=['waffle.tests.base.ReplicationRouter'])
+    def test_everyone_on_read_from_write_db(self):
+        flag = Flag.objects.create(name='myflag', everyone=True)
+
+        request = get()
+        response = process_request(request, views.flag_in_view)
+        # By default, flag_is_active should hit whatever it configured as the
+        # read DB (so values will be stale if replication is lagged).
+        self.assertEqual(b'off', response.content)
+
+        with override_settings(WAFFLE_READ_FROM_WRITE_DB=True):
+            # Save the flag again to flush the cache.
+            flag.save()
+
+            # The next read should now be directed to the write DB, ensuring
+            # the cache and DB are in sync.
+            response = process_request(request, views.flag_in_view)
+            self.assertEqual(b'on', response.content)
+
 
 class SwitchTests(TestCase):
     def test_switch_active(self):
@@ -297,8 +317,8 @@ class SwitchTests(TestCase):
         # Get the value once so that it will be put into the cache
         assert switch_is_active(switch.name)
         queries = len(connection.queries)
-        assert switch_is_active(switch.name)
-        self.assertEqual(queries, len(connection.queries), 'We should only make one query.')
+        assert waffle.switch_is_active(switch.name)
+        self.assertEqual(queries, len(connection.queries))
 
     def test_switch_inactive_from_cache(self):
         """Do not make two queries for an existing inactive switch."""
@@ -306,8 +326,8 @@ class SwitchTests(TestCase):
         # Get the value once so that it will be put into the cache
         assert not switch_is_active(switch.name)
         queries = len(connection.queries)
-        assert not switch_is_active(switch.name)
-        self.assertEqual(queries, len(connection.queries), 'We should only make one query.')
+        assert not waffle.switch_is_active(switch.name)
+        self.assertEqual(queries, len(connection.queries))
 
     def test_undefined(self):
         assert not switch_is_active('foo')
@@ -321,11 +341,27 @@ class SwitchTests(TestCase):
         """Do not make two queries for a non-existent switch."""
         assert not Switch.objects.filter(name='foo').exists()
         queries = len(connection.queries)
-        assert not switch_is_active('foo')
-        assert len(connection.queries) > queries, 'We should make one query.'
+        assert not waffle.switch_is_active('foo')
+        assert len(connection.queries) > queries
         queries = len(connection.queries)
-        assert not switch_is_active('foo')
-        self.assertEqual(queries, len(connection.queries), 'We should only make one query.')
+        assert not waffle.switch_is_active('foo')
+        self.assertEqual(queries, len(connection.queries))
+
+    @override_settings(DATABASE_ROUTERS=['waffle.tests.base.ReplicationRouter'])
+    def test_read_from_write_db(self):
+        switch = Switch.objects.create(name='switch', active=True)
+
+        # By default, switch_is_active should hit whatever it configured as the
+        # read DB (so values will be stale if replication is lagged).
+        assert not waffle.switch_is_active(switch.name)
+
+        with override_settings(WAFFLE_READ_FROM_WRITE_DB=True):
+            # Save the switch again to flush the cache.
+            switch.save()
+
+            # The next read should now be directed to the write DB, ensuring
+            # the cache and DB are in sync.
+            assert waffle.switch_is_active(switch.name)
 
 
 class SampleTests(TestCase):
@@ -342,4 +378,20 @@ class SampleTests(TestCase):
 
     @override_settings(WAFFLE_SAMPLE_DEFAULT=True)
     def test_undefined_default(self):
-        assert sample_is_active('foo')
+        assert waffle.sample_is_active('foo')
+
+    @override_settings(DATABASE_ROUTERS=['waffle.tests.base.ReplicationRouter'])
+    def test_read_from_write_db(self):
+        sample = Sample.objects.create(name='sample', percent='100.0')
+
+        # By default, sample_is_active should hit whatever it configured as the
+        # read DB (so values will be stale if replication is lagged).
+        assert not waffle.sample_is_active(sample.name)
+
+        with override_settings(WAFFLE_READ_FROM_WRITE_DB=True):
+            # Save the sample again to flush the cache.
+            sample.save()
+
+            # The next read should now be directed to the write DB, ensuring
+            # the cache and DB are in sync.
+            assert waffle.sample_is_active(sample.name)
